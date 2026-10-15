@@ -1,9 +1,17 @@
-# Reference dbt profile for Databricks. Copy into ~/.dbt/profiles.yml (or merge).
+# dbt profile for Databricks. The bootstrap/implement skills copy this file to a
+# project-local `profiles.yml` (gitignored) and run dbt with `--profiles-dir .`.
 # No secrets in this file: everything is read from environment variables.
-#   DATABRICKS_HOST       bare hostname, no https:// (e.g. adb-1234567890123456.7.azuredatabricks.net)
-#   DATABRICKS_HTTP_PATH  SQL warehouse HTTP path (e.g. /sql/1.0/warehouses/<warehouse-id>)
-#   DATABRICKS_TOKEN      personal access token, or a short-lived OAuth token (see README)
-{{DBT_PROJECT_NAME}}:
+#
+# dbt WRITES (CREATE SCHEMA / CREATE TABLE / CREATE VIEW in the output-port
+# schema and in {{INTERNAL_SCHEMA}}), so the principal behind these credentials
+# needs write rights. A read-only service principal is enough for
+# `datacontract test`, not for dbt.
+#
+#   DATABRICKS_HOST           bare hostname, no https:// (e.g. adb-1234567890123456.7.azuredatabricks.net)
+#   DATABRICKS_HTTP_PATH      SQL warehouse HTTP path (e.g. /sql/1.0/warehouses/<warehouse-id>)
+#   dev:  DATABRICKS_TOKEN    PAT, Azure AD (Entra) token, or an OAuth token minted for a writer SP
+#   prod: DATABRICKS_CLIENT_ID / DATABRICKS_CLIENT_SECRET   writer service principal (OAuth M2M)
+{{DBT_NAME}}:
   target: dev
   outputs:
     dev:
@@ -15,8 +23,7 @@
       schema: {{INTERNAL_SCHEMA}}   # default schema; output ports override it per model
       threads: 4
 
-    # Service principal (OAuth machine-to-machine). Set DATABRICKS_CLIENT_ID and
-    # DATABRICKS_CLIENT_SECRET (a Databricks OAuth secret for the service principal).
+    # Writer service principal (OAuth machine-to-machine), used by CI.
     prod:
       type: databricks
       host: "{{ env_var('DATABRICKS_HOST') }}"

@@ -1,3 +1,5 @@
+# dataproduct-builder:stub — written by dataproduct-bootstrap because the output port had no
+# published data contract yet. dataproduct-implement replaces this file with the published contract.
 apiVersion: v3.1.0
 kind: DataContract
 
@@ -31,8 +33,9 @@ team:
   name: "{{TEAM_NAME}}"
 
 servers:
-  - server: production
+  - server: {{CONTRACT_SERVER}}
     type: databricks
+    environment: prod
     host: "{{DATABRICKS_HOST}}"
     catalog: "{{CATALOG}}"
     schema: "{{SCHEMA}}"

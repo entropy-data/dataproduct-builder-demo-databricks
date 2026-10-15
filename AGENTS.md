@@ -22,19 +22,23 @@ The skill files reference `${PLUGIN_ROOT}` to locate `templates/`. On Claude Cod
 
 ## CLIs the skills shell out to
 
-- **`entropy-data`** (PyPI: `entropy-data`; install with `uv tool install entropy-data`) — used to fetch data products and contracts, publish updates, list teams.
-- **`dbt`** (`dbt-databricks` adapter) — required at runtime by both skills.
-- **`dbt-ol`** (PyPI: `openlineage-dbt`) — runs dbt with OpenLineage so the demo ships lineage to Entropy Data immediately during implementation. Datasets are emitted under the namespace `databricks://<host>`.
-- **`datacontract`** (PyPI: `datacontract-cli[databricks]`) — runs contract tests against the Databricks server defined in the ODCS file.
+- **`entropy-data`** (PyPI: `entropy-data`; install with `uv tool install entropy-data`) — used to fetch data products and contracts, publish updates, list teams. The API key comes from `ENTROPY_DATA_API_KEY` if set, else from the connection (`entropy-data connection get --show-api-key -o json | jq -r .api_key`). Never print it.
+- **`dbt`** (`dbt-databricks` adapter) — run as `uvx --python 3.12 --from dbt-core --with dbt-databricks dbt … --profiles-dir .` (project-local, gitignored `profiles.yml` with `env_var()` references only).
+- **`dbt-ol`** (PyPI: `openlineage-dbt`) — run as `uvx --python 3.12 --from openlineage-dbt --with dbt-databricks dbt-ol … --profiles-dir .`; ships lineage to Entropy Data immediately during implementation. Datasets are emitted under the namespace `databricks://<host>`. Don't use `dbt-ol --version` as a pre-check (it crashes without a project or API key); use `uvx --python 3.12 --from openlineage-dbt --with dbt-databricks python -c "import openlineage.dbt"`.
+- **`datacontract`** (PyPI: `datacontract-cli[databricks]`) — run as `uv tool run --from 'datacontract-cli[databricks]' datacontract`; runs contract tests against the Databricks server defined in the ODCS file.
 
-If any CLI is missing, surface the install line and stop — do not try to install on the user's behalf without confirmation.
+Only `uv` needs to be installed. If it is missing, surface the install line and stop — do not try to install on the user's behalf without confirmation.
+
+The Claude Code hook `hooks/datacontract_lint.sh` lints edited `*.odcs.yaml` files. Contracts that link semantic business definitions need `ENTROPY_DATA_API_KEY` (and `ENTROPY_DATA_HOST` if the IRIs point at another host) to resolve them; without the key the hook only warns about those references.
 
 ## Conventions when running skills
 
 - **Databricks only.** This demo plugin intentionally drops multi-platform branching. For Snowflake, point users at https://github.com/entropy-data/dataproduct-builder-demo; for BigQuery/Postgres, at https://github.com/entropy-data/dataproduct-builder-dbt.
-- **Unity Catalog naming.** Catalog = the organization's catalog; one schema per output port, named after the output-port / contract id (e.g. `customers_v1`); table = contract id without the `_v<N>` suffix (e.g. `customers`). Staging and intermediate models live in `<data-product-id>_internal`. Upstream data products are read as dbt sources from `<catalog>.<upstream-output-port-id>.<table>`.
+- **Unity Catalog naming.** Catalog = the organization's catalog; one schema per output port, named after the output-port / contract id (e.g. `customers_v1`); table = contract id without the `_v<N>` suffix (e.g. `customers`). Staging and intermediate models live in `<dbt_name>_internal`, where `dbt_name` is the data product id in snake_case (Entropy Data ids are usually kebab-case: `regional-score-statistics` → dbt project/profile `regional_score_statistics`; Entropy Data calls always use the original id). Upstream data products are read as dbt sources from `<catalog>.<upstream-output-port-id>.<table>`.
 - **Don't skip the pre-checks.** Both skills verify CLI presence and Entropy Data connection before touching files.
+- **Published metadata wins.** If the data product / contract already exists on Entropy Data, use it instead of asking or writing stubs. Stub files carry a `# dataproduct-builder:stub` marker and are replaced without asking.
+- **Writer vs. reader.** dbt needs write rights (CREATE SCHEMA / TABLE / VIEW in the output-port and internal schemas); `datacontract test` only needs read (USE CATALOG / USE SCHEMA / SELECT), so a read-only service principal is enough there.
 - **Don't overwrite existing files silently.** Surface the diff and ask.
-- **Don't run `git init`, commit, or push** on the user's behalf — leave VCS state to the user.
+- **Don't run `git init`, commit, or push** on the user's behalf — leave VCS state to the user (list the commands as next steps for them).
 - **Don't commit secrets.** API keys and Databricks tokens / client secrets must come from env vars or repo secrets.
 - **Idempotent re-runs.** Running a skill a second time when everything is already in place should be a no-op, except for `dbt run` / `dbt test` / `datacontract test` which always re-execute by design.

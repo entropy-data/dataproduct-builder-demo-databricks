@@ -23,18 +23,20 @@ Skill files reference `${PLUGIN_ROOT}` to locate `templates/`. On Claude Code it
 ## CLIs the skills shell out to
 
 - **`entropy-data`** — fetch and publish data products / contracts.
-- **`dbt`** (`dbt-databricks` adapter) — required by both skills.
-- **`dbt-ol`** (`openlineage-dbt`) — runs dbt with OpenLineage so lineage ships to Entropy Data on the spot (namespace `databricks://<host>`).
-- **`datacontract`** (`datacontract-cli[databricks]`) — runs contract tests against Databricks.
+- **`dbt`** (`dbt-databricks` adapter) — `uvx --python 3.12 --from dbt-core --with dbt-databricks dbt … --profiles-dir .`.
+- **`dbt-ol`** (`openlineage-dbt`) — `uvx --python 3.12 --from openlineage-dbt --with dbt-databricks dbt-ol … --profiles-dir .`; lineage ships to Entropy Data on the spot (namespace `databricks://<host>`).
+- **`datacontract`** (`datacontract-cli[databricks]`) — `uv tool run --from 'datacontract-cli[databricks]' datacontract`; runs contract tests against Databricks.
 
-If any CLI is missing, surface the install line and stop.
+Only `uv` needs to be installed. If it is missing, surface the install line and stop. The Entropy Data API key comes from `ENTROPY_DATA_API_KEY`, else `entropy-data connection get --show-api-key -o json | jq -r .api_key`; never print it.
 
 ## Conventions
 
-- **Databricks only.** If the user's dbt profile is not `type: databricks`, stop and point them at https://github.com/entropy-data/dataproduct-builder-demo (Snowflake) or https://github.com/entropy-data/dataproduct-builder-dbt (multi-platform).
-- **Unity Catalog naming.** One schema per output port named after the output-port / contract id (`customers_v1`), table = contract id without `_v<N>` (`customers`), staging/intermediate in `<data-product-id>_internal`.
+- **Databricks only.** If the project's dbt profile (project-local `profiles.yml`) is not `type: databricks`, stop and point them at https://github.com/entropy-data/dataproduct-builder-demo (Snowflake) or https://github.com/entropy-data/dataproduct-builder-dbt (multi-platform).
+- **Unity Catalog naming.** One schema per output port named after the output-port / contract id (`customers_v1`), table = contract id without `_v<N>` (`customers`), staging/intermediate in `<dbt_name>_internal` (`dbt_name` = the kebab-case data product id in snake_case; Entropy Data calls use the original id).
+- **Published metadata wins.** Reuse a published data product / contract instead of asking or writing stubs; `# dataproduct-builder:stub` files are replaced without asking.
+- **Writer vs. reader.** dbt needs write rights; `datacontract test` is fine with a read-only service principal.
 - **Don't skip pre-checks.** Both skills verify CLI presence and Entropy Data connection first.
 - **Don't overwrite existing files silently.** Surface the diff and ask.
-- **Don't run `git init`, commit, or push.** Leave VCS state to the user.
+- **Don't run `git init`, commit, or push.** Leave VCS state to the user (list the commands as next steps for them).
 - **Don't commit secrets.** API keys and Databricks tokens / client secrets must come from env vars or repo secrets.
 - **Idempotent re-runs**, except `dbt run` / `dbt test` / `datacontract test` which always execute.

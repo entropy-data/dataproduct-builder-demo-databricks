@@ -11,7 +11,7 @@ version: 2
 #
 # version: 2
 # sources:
-#   - name: <provider-data-product-id>_<provider-output-port-id>
+#   - name: <provider_data_product_id>_<provider_output_port_id>   # snake_case: '-' -> '_'
 #     database: <catalog>                      # Unity Catalog catalog
 #     schema: <provider-output-port-id>        # e.g. orders_v2
 #     tables:

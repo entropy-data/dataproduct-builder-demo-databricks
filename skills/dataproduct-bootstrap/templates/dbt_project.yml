@@ -1,7 +1,7 @@
-name: '{{DBT_PROJECT_NAME}}'
+name: '{{DBT_NAME}}'
 version: '1.0.0'
 
-profile: '{{DBT_PROJECT_NAME}}'
+profile: '{{DBT_NAME}}'
 
 model-paths: ["models"]
 analysis-paths: ["analyses"]
@@ -20,7 +20,7 @@ clean-targets:
 #                                set per model with {{ config(schema='<output_port_id>') }})
 # macros/generate_schema_name.sql makes dbt use these schema names literally.
 models:
-  {{DBT_PROJECT_NAME}}:
+  {{DBT_NAME}}:
     +materialized: table
     +file_format: delta
     staging:
@@ -31,7 +31,3 @@ models:
       +schema: '{{INTERNAL_SCHEMA}}'
     output_ports:
       +materialized: table
-
-seeds:
-  {{DBT_PROJECT_NAME}}:
-    +schema: '{{INTERNAL_SCHEMA}}'

@@ -9,10 +9,12 @@ on:
 #   ENTROPY_DATA_API_KEY
 #   DATABRICKS_HOST            bare hostname, e.g. adb-1234567890123456.7.azuredatabricks.net
 #   DATABRICKS_HTTP_PATH       e.g. /sql/1.0/warehouses/<warehouse-id>
-#   DATABRICKS_CLIENT_ID       service principal (OAuth M2M) ...
-#   DATABRICKS_CLIENT_SECRET   ... with a Databricks OAuth secret
+#   DATABRICKS_CLIENT_ID       WRITER service principal (OAuth M2M) — dbt needs CREATE SCHEMA /
+#   DATABRICKS_CLIENT_SECRET   CREATE TABLE in the output-port schema and {{INTERNAL_SCHEMA}}
+# The same SP's token is reused for `datacontract test`, which only needs USE CATALOG / USE SCHEMA / SELECT.
 env:
   API: {{API_HOST}}/api
+  ENTROPY_DATA_HOST: {{API_HOST}}
   DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
   DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
   DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
@@ -35,42 +37,24 @@ jobs:
       - name: Install dependencies
         run: pip install dbt-core dbt-databricks openlineage-dbt 'datacontract-cli[databricks]' entropy-data
 
-      - name: Mint Databricks OAuth token (M2M)
+      - name: Mint Databricks OAuth token (M2M) for datacontract test
         run: |
           TOKEN=$(curl -sf -X POST "https://${DATABRICKS_HOST}/oidc/v1/token" \
             -u "${DATABRICKS_CLIENT_ID}:${DATABRICKS_CLIENT_SECRET}" \
             -d 'grant_type=client_credentials&scope=all-apis' | jq -r .access_token)
           echo "::add-mask::${TOKEN}"
-          echo "DATABRICKS_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
           echo "DATACONTRACT_DATABRICKS_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
 
-      - name: Create profiles.yml
-        run: |
-          mkdir -p ~/.dbt
-          cat > ~/.dbt/profiles.yml <<'PROFILE'
-          {{DBT_PROFILE}}:
-            target: prod
-            outputs:
-              prod:
-                type: databricks
-                host: "{{ env_var('DATABRICKS_HOST') }}"
-                http_path: "{{ env_var('DATABRICKS_HTTP_PATH') }}"
-                token: "{{ env_var('DATABRICKS_TOKEN') }}"
-                catalog: {{CATALOG}}
-                schema: {{INTERNAL_SCHEMA}}
-                threads: 4
-          PROFILE
-
-      - name: dbt deps
-        run: dbt deps
+      - name: Create project-local profiles.yml
+        run: cp profiles.yml.example profiles.yml
 
       - name: dbt run
-        run: dbt-ol run --target prod
+        run: dbt-ol run --profiles-dir . --target prod
         env:
           OPENLINEAGE__TRANSPORT__AUTH__APIKEY: ${{ secrets.ENTROPY_DATA_API_KEY }}
 
       - name: dbt test
-        run: dbt test --target prod
+        run: dbt test --profiles-dir . --target prod
 
       - name: Publish data product
         run: entropy-data dataproducts put {{DATA_PRODUCT_ID}} --file {{ODPS_FILE}}
@@ -85,7 +69,7 @@ jobs:
       - name: Data contract test
         run: |
           datacontract test models/output_ports/v1/{{CONTRACT_FILE}} \
-            --server production \
+            --server {{CONTRACT_SERVER}} \
             --publish $API/test-results
         env:
           ENTROPY_DATA_API_KEY: ${{ secrets.ENTROPY_DATA_API_KEY }}

@@ -1,6 +1,6 @@
 {
   "name": "dataproduct-builder-demo-databricks",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Demo-grade builder: scaffold a Databricks (Unity Catalog) dbt data product, implement it, run dbt, run tests, run data contract tests, and publish OpenLineage — all in one go.",
   "author": {
     "name": "Entropy Data",

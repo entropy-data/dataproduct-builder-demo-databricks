@@ -2,7 +2,7 @@
   Use `+schema` / config(schema=...) literally instead of dbt's default
   `<target_schema>_<custom_schema>` concatenation, so output-port models land in
   the Unity Catalog schema named after the output port (e.g. `customers_v1`)
-  and staging / intermediate land in `<data-product-id>_internal`.
+  and staging / intermediate land in `<dbt_name>_internal`.
   Models without a custom schema fall back to the profile's `schema:`.
 -#}
 {% macro generate_schema_name(custom_schema_name, node) -%}

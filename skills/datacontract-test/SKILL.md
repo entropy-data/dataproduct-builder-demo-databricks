@@ -22,14 +22,16 @@ Two kinds of contracts live in this project and they test against different Unit
 
 > `${PLUGIN_ROOT}` below refers to the root of this plugin — the directory that contains `skills/`. On Claude Code it is set automatically as `${CLAUDE_PLUGIN_ROOT}`; use that. On any other agent (Codex, Copilot CLI, etc.) it is unset; resolve it as `../..` relative to **this `SKILL.md` file's directory** (i.e. the grandparent of `skills/<this-skill>/`).
 
+**Tool invocation.** Below, `datacontract` means `uv tool run --from 'datacontract-cli[databricks]' datacontract` (a `datacontract` already on PATH works too).
+
 ### Plan announcement (before Step 0)
 
 Before running Step 0, print this plan to the user verbatim:
 
 > Running **datacontract-test**. I'll:
-> 1. Pre-checks: confirm `datacontract` is on PATH and Databricks credentials are in the environment.
+> 1. Pre-checks: confirm `datacontract` runs and Databricks credentials are in the environment.
 > 2. Pick which contract(s) to test — defaults to all `models/output_ports/**/*.odcs.yaml` and `models/input_ports/*.odcs.yaml`.
-> 3. Pick the server (defaults to `production` if the contract defines one).
+> 3. Pick the server (defaults to the contract's Databricks server with environment `prod` / `production`).
 > 4. Run `datacontract test` per contract and capture the result.
 > 5. Report pass/fail with per-rule detail; flag missing credentials separately from real failures.
 
@@ -37,7 +39,7 @@ Then proceed.
 
 ### Step 0 — Pre-checks
 
-- Confirm `datacontract --version` is on PATH. If not, stop and tell the user to install it: `uv tool install 'datacontract-cli[databricks]'`.
+- Confirm `uv tool run --from 'datacontract-cli[databricks]' datacontract --version` works. If `uv` is missing, stop and tell the user to install it (`curl -LsSf https://astral.sh/uv/install.sh | sh`).
 - Confirm at least one `*.odcs.yaml` exists under `models/output_ports/**/` or `models/input_ports/`. If not, stop and tell the user there is nothing to test.
 - Confirm Databricks credentials for the Data Contract CLI are in the environment. The CLI reads `DATACONTRACT_DATABRICKS_*` env vars, **not** `~/.dbt/profiles.yml`. The minimum set:
 
@@ -47,7 +49,7 @@ Then proceed.
   DATACONTRACT_DATABRICKS_SERVER_HOSTNAME  # optional when the server block has `host`
   ```
 
-  If any are unset, surface the list and ask whether to continue (the CLI will fail-fast on that server) or stop. Do not try to source credentials yourself.
+  `datacontract test` only runs `SELECT`s, so a **read-only** principal (e.g. a service principal with `USE CATALOG`, `USE SCHEMA`, `SELECT`) is enough — unlike dbt, which needs write rights. If any are unset, surface the list and ask whether to continue (the CLI will fail-fast on that server) or stop. Do not try to source credentials yourself, and never print token values.
 
 ### Step 1 — Select contracts
 
@@ -61,7 +63,7 @@ Then proceed.
 For each contract in `CONTRACTS`:
 
 - If the contract has exactly one server, use it.
-- If it has multiple, default to `production`. If `production` is not defined, ask the user which one.
+- If it has multiple, default to the `type: databricks` server with `environment` `prod` / `production`, then one named `prod` / `production`. Use its actual `.server` name (e.g. `databricks-prod`) — never assume `production`. If none matches, ask the user which one.
 - Only pass `--server all` if the user explicitly asks to test every server.
 - If the chosen server is not `type: databricks`, mark the contract `skipped` (this plugin is Databricks-only).
 
@@ -70,7 +72,7 @@ For each contract in `CONTRACTS`:
 For each contract:
 
 ```
-datacontract test <path-to-contract>.odcs.yaml --server <server> --logs
+uv tool run --from 'datacontract-cli[databricks]' datacontract test <path-to-contract>.odcs.yaml --server <server> --logs
 ```
 
 Where `<path-to-contract>` is the file resolved in Step 1 — typically `models/output_ports/v<N>/<file>.odcs.yaml` for output contracts, or `models/input_ports/<file>.odcs.yaml` for input contracts. The CLI does not care which directory; the role only matters for how Step 4 reports the result.
@@ -78,7 +80,8 @@ Where `<path-to-contract>` is the file resolved in Step 1 — typically `models/
 - **Upstream on another workspace:** `DATACONTRACT_DATABRICKS_SERVER_HOSTNAME` overrides the contract's `host`. If an input-port contract's `host` differs from this project's workspace, run it with that variable unset (and with an HTTP path + token valid for the upstream workspace), otherwise the CLI connects to the wrong workspace.
 - `--logs` ensures per-rule failure detail is in stdout — without it the CLI only prints a summary.
 - If the user asks for a persisted report (e.g. to attach to a PR), add `--output ./test-results/<contract>.xml --output-format junit`.
-- If the user asks to publish results back to Entropy Data (matches the generated CI workflow), add `--publish $API/test-results` where `$API` is the Entropy Data host. Do not publish by default — it writes server-side state.
+- If the user asks to publish results back to Entropy Data (matches the generated CI workflow), add `--publish <API_HOST>/api/test-results` (`API_HOST` = `entropy-data connection get -o json | jq -r .host`) with `ENTROPY_DATA_API_KEY` set inline, e.g. `ENTROPY_DATA_API_KEY="${ENTROPY_DATA_API_KEY:-$(entropy-data connection get --show-api-key -o json | jq -r .api_key)}"`. `--publish-test-results` is deprecated — don't use it. Do not publish by default — it writes server-side state.
+- With Azure AD (Entra) tokens the CLI may log `Token exchange failed, using external token` — harmless.
 - Capture stdout and exit code per contract. Non-zero exit means at least one rule failed.
 
 Run sequentially, not in parallel — the SQL warehouse is the bottleneck and parallel runs muddy the log output.
@@ -109,8 +112,9 @@ The Data Contract CLI reads credentials from environment variables, not from the
 
 ```yaml
 servers:
-  - server: production
+  - server: databricks-prod         # the name is free-form; pass it to --server
     type: databricks
+    environment: prod
     host: adb-1234567890123456.7.azuredatabricks.net
     catalog: acme_prod
     schema: customers_v1
@@ -144,12 +148,14 @@ export DATACONTRACT_DATABRICKS_SERVER_HOSTNAME=${DATABRICKS_HOST}
 export DATACONTRACT_DATABRICKS_HTTP_PATH=${DATABRICKS_HTTP_PATH}
 ```
 
-(Recent `datacontract-cli` releases can also do the exchange themselves from `DATACONTRACT_DATABRICKS_CLIENT_ID` / `DATACONTRACT_DATABRICKS_CLIENT_SECRET` when no token is set.) Grant the service principal `USE CATALOG`, `USE SCHEMA`, and `SELECT` on the schemas under test — nothing more.
+(Recent `datacontract-cli` releases can also do the exchange themselves from `DATACONTRACT_DATABRICKS_CLIENT_ID` / `DATACONTRACT_DATABRICKS_CLIENT_SECRET` when no token is set.) Grant the service principal `USE CATALOG`, `USE SCHEMA`, and `SELECT` on the schemas under test — nothing more. This read-only SP is enough for contract tests; dbt runs need a separate principal with write rights (see `dataproduct-implement`).
 
 **Azure Databricks with an Entra ID login** — an Entra access token for the Azure Databricks resource also works as the token:
 ```bash
 export DATACONTRACT_DATABRICKS_TOKEN=$(az account get-access-token --resource 2ff814a6-3304-4ab8-85cb-cd0e6f879c1d --query accessToken -o tsv)
 ```
+
+The CLI then logs `Token exchange failed, using external token` — harmless.
 
 ## Constraints
 

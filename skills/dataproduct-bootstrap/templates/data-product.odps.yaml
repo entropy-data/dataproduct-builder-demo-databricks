@@ -1,3 +1,5 @@
+# dataproduct-builder:stub — written by dataproduct-bootstrap because the data product was not
+# published on Entropy Data yet. dataproduct-implement replaces this file with the published ODPS.
 apiVersion: "v1.0.0"
 kind: "DataProduct"
 id: "{{DATA_PRODUCT_ID}}"
@@ -22,7 +24,7 @@ outputPorts:
       - property: "table"
         value: "{{TABLE}}"
       - property: "contractServer"
-        value: "production"
+        value: "{{CONTRACT_SERVER}}"
       - property: "displayName"
         value: "{{TABLE}}"
       - property: "status"
