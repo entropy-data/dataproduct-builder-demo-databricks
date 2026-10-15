@@ -1,0 +1,91 @@
+name: "{{DATA_PRODUCT_NAME}} Data Product"
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * *"
+
+# Repository secrets:
+#   ENTROPY_DATA_API_KEY
+#   DATABRICKS_HOST            bare hostname, e.g. adb-1234567890123456.7.azuredatabricks.net
+#   DATABRICKS_HTTP_PATH       e.g. /sql/1.0/warehouses/<warehouse-id>
+#   DATABRICKS_CLIENT_ID       service principal (OAuth M2M) ...
+#   DATABRICKS_CLIENT_SECRET   ... with a Databricks OAuth secret
+env:
+  API: {{API_HOST}}/api
+  DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+  DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
+  DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+  DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+  DATACONTRACT_DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_HOST }}
+  DATACONTRACT_DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
+  OPENLINEAGE_NAMESPACE: databricks://{{DATABRICKS_HOST}}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install dbt-core dbt-databricks openlineage-dbt 'datacontract-cli[databricks]' entropy-data
+
+      - name: Mint Databricks OAuth token (M2M)
+        run: |
+          TOKEN=$(curl -sf -X POST "https://${DATABRICKS_HOST}/oidc/v1/token" \
+            -u "${DATABRICKS_CLIENT_ID}:${DATABRICKS_CLIENT_SECRET}" \
+            -d 'grant_type=client_credentials&scope=all-apis' | jq -r .access_token)
+          echo "::add-mask::${TOKEN}"
+          echo "DATABRICKS_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
+          echo "DATACONTRACT_DATABRICKS_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
+
+      - name: Create profiles.yml
+        run: |
+          mkdir -p ~/.dbt
+          cat > ~/.dbt/profiles.yml <<'PROFILE'
+          {{DBT_PROFILE}}:
+            target: prod
+            outputs:
+              prod:
+                type: databricks
+                host: "{{ env_var('DATABRICKS_HOST') }}"
+                http_path: "{{ env_var('DATABRICKS_HTTP_PATH') }}"
+                token: "{{ env_var('DATABRICKS_TOKEN') }}"
+                catalog: {{CATALOG}}
+                schema: {{INTERNAL_SCHEMA}}
+                threads: 4
+          PROFILE
+
+      - name: dbt deps
+        run: dbt deps
+
+      - name: dbt run
+        run: dbt-ol run --target prod
+        env:
+          OPENLINEAGE__TRANSPORT__AUTH__APIKEY: ${{ secrets.ENTROPY_DATA_API_KEY }}
+
+      - name: dbt test
+        run: dbt test --target prod
+
+      - name: Publish data product
+        run: entropy-data dataproducts put {{DATA_PRODUCT_ID}} --file {{ODPS_FILE}}
+        env:
+          ENTROPY_DATA_API_KEY: ${{ secrets.ENTROPY_DATA_API_KEY }}
+
+      - name: Publish data contract
+        run: entropy-data datacontracts put {{CONTRACT_ID}} --file models/output_ports/v1/{{CONTRACT_FILE}}
+        env:
+          ENTROPY_DATA_API_KEY: ${{ secrets.ENTROPY_DATA_API_KEY }}
+
+      - name: Data contract test
+        run: |
+          datacontract test models/output_ports/v1/{{CONTRACT_FILE}} \
+            --server production \
+            --publish $API/test-results
+        env:
+          ENTROPY_DATA_API_KEY: ${{ secrets.ENTROPY_DATA_API_KEY }}

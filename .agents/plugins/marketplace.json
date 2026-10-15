@@ -1,0 +1,21 @@
+{
+  "name": "dataproduct-builder-demo-databricks",
+  "interface": {
+    "displayName": "Data Product Builder for Databricks (Demo)",
+    "shortDescription": "Demo plugin for Databricks dbt data products."
+  },
+  "plugins": [
+    {
+      "name": "dataproduct-builder-demo-databricks",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/entropy-data/dataproduct-builder-demo-databricks.git"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "category": "Data"
+    }
+  ]
+}

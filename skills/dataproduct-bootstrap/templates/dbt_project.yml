@@ -1,0 +1,37 @@
+name: '{{DBT_PROJECT_NAME}}'
+version: '1.0.0'
+
+profile: '{{DBT_PROJECT_NAME}}'
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Unity Catalog layout (catalog comes from the profile's `catalog:`):
+#   staging/ + intermediate/  -> <catalog>.{{INTERNAL_SCHEMA}}   (never granted to consumers)
+#   output_ports/v<N>/<t>.sql -> <catalog>.<output_port_id>.<t>   (one schema per output port,
+#                                set per model with {{ config(schema='<output_port_id>') }})
+# macros/generate_schema_name.sql makes dbt use these schema names literally.
+models:
+  {{DBT_PROJECT_NAME}}:
+    +materialized: table
+    +file_format: delta
+    staging:
+      +materialized: view
+      +schema: '{{INTERNAL_SCHEMA}}'
+    intermediate:
+      +materialized: view
+      +schema: '{{INTERNAL_SCHEMA}}'
+    output_ports:
+      +materialized: table
+
+seeds:
+  {{DBT_PROJECT_NAME}}:
+    +schema: '{{INTERNAL_SCHEMA}}'

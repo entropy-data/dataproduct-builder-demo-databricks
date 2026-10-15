@@ -1,0 +1,41 @@
+apiVersion: v3.1.0
+kind: DataContract
+
+id: "{{CONTRACT_ID}}"
+name: "{{DATA_PRODUCT_NAME}}"
+version: 1.0.0
+status: draft
+
+description:
+  usage: analytics
+  purpose: "{{PURPOSE}}"
+
+schema:
+  - name: "{{TABLE}}"
+    physicalName: "{{TABLE}}"
+    physicalType: table
+    properties:
+      - name: id
+        description: Primary key.
+        logicalType: string
+        physicalType: string
+        required: true
+        primaryKey: true
+      - name: updated_at
+        description: Timestamp when this record was written by dbt.
+        logicalType: timestamp
+        physicalType: timestamp
+        required: true
+
+team:
+  name: "{{TEAM_NAME}}"
+
+servers:
+  - server: production
+    type: databricks
+    host: "{{DATABRICKS_HOST}}"
+    catalog: "{{CATALOG}}"
+    schema: "{{SCHEMA}}"
+    customProperties:
+      - property: httpPath
+        value: "{{DATABRICKS_HTTP_PATH}}"

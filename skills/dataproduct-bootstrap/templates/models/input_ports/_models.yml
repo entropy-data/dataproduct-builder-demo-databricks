@@ -1,0 +1,18 @@
+version: 2
+
+# Declare upstream data products you read from as dbt sources. In Unity Catalog
+# an upstream output port lives at <catalog>.<upstream-output-port-id>.<table>
+# (dbt-databricks maps a source's `database:` to the Unity Catalog catalog).
+# The dataproduct-implement skill writes one file per active access agreement:
+#
+#   models/input_ports/<provider-output-port-id>.source.yaml
+#
+# Example:
+#
+# version: 2
+# sources:
+#   - name: <provider-data-product-id>_<provider-output-port-id>
+#     database: <catalog>                      # Unity Catalog catalog
+#     schema: <provider-output-port-id>        # e.g. orders_v2
+#     tables:
+#       - name: <table>                        # e.g. orders

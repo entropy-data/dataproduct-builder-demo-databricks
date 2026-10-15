@@ -1,0 +1,19 @@
+{
+  "name": "dataproduct-builder-demo-databricks",
+  "owner": {
+    "name": "Entropy Data",
+    "email": "hello@entropy-data.com"
+  },
+  "metadata": {
+    "description": "Demo data product builder for Databricks.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "dataproduct-builder-demo-databricks",
+      "description": "Demo-grade builder for Databricks (Unity Catalog) dbt data products with Entropy Data.",
+      "version": "0.1.0",
+      "source": "."
+    }
+  ]
+}
