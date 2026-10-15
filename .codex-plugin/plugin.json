@@ -1,6 +1,6 @@
 {
   "name": "dataproduct-builder-demo-databricks",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Demo-grade builder for Databricks (Unity Catalog) dbt data products with Entropy Data.",
   "author": {
     "name": "Entropy Data",

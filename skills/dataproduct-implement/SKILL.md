@@ -64,7 +64,7 @@ Then proceed.
 - **Resolve runtime credentials once, never print them.** Do not echo, log, or persist API keys or tokens; pass them only as inline env vars of the command that needs them, through `$(...)` / `${VAR}` expansions so the values never appear in the transcript.
   - **Entropy Data API key** — `${ENTROPY_DATA_API_KEY}` if set, else `$(entropy-data connection get --show-api-key -o json | jq -r .api_key)` (the JSON field is `api_key`; without `--show-api-key` it is masked).
   - `DBX_HOST` ← `$DATABRICKS_HOST`, else the output-port contract server's `host` (Step 2). Strip any `https://` and trailing `/`.
-  - `DBX_HTTP_PATH` ← `$DATABRICKS_HTTP_PATH`, else the contract server's `customProperties` `httpPath`, else ask the user (not a secret).
+  - `DBX_HTTP_PATH` ← `$DATABRICKS_HTTP_PATH`, else the contract server's `customProperties` `httpPath`, else the HTTP path recorded in the project's `README.md` by `dataproduct-bootstrap` (reuse it; don't ask twice), else ask the user (not a secret).
   - **dbt needs a writer** — `CREATE SCHEMA` on the catalog (or pre-created `<CATALOG>.<SCHEMA>` and `<CATALOG>.<INTERNAL_SCHEMA>` with `CREATE TABLE` / `CREATE VIEW`) plus `SELECT` on the input-port schemas. First match wins:
     1. `$DATABRICKS_TOKEN` (PAT, Azure AD / Entra token, or a minted token) → target `dev`.
     2. `$DATABRICKS_CLIENT_ID` / `$DATABRICKS_CLIENT_SECRET` of a **writer** service principal → target `prod` (native OAuth M2M in the profile).
@@ -263,7 +263,7 @@ DATACONTRACT_DATABRICKS_TOKEN="${DATACONTRACT_DATABRICKS_TOKEN:-${DATABRICKS_TOK
   uv tool run --from 'datacontract-cli[databricks]' datacontract test models/output_ports/v<N>/<contract-id>.odcs.yaml --server <CONTRACT_SERVER> --logs
 ```
 
-(Replace the token expansion with the `$(...)` from Step 0 when the token is minted.) The Data Contract CLI takes `catalog` / `schema` from the ODCS server block and the HTTP path only from `DATACONTRACT_DATABRICKS_HTTP_PATH`. `--logs` ensures the failure detail (field + rule) is in stdout. Non-zero exit means at least one rule failed. Capture per-contract result for the final report. To also publish the result to Entropy Data, add `--publish <API_HOST>/api/test-results` with `ENTROPY_DATA_API_KEY` set (not the deprecated `--publish-test-results`).
+(Replace the token expansion with the `$(...)` from Step 0 when the token is minted.) The Data Contract CLI takes `catalog` / `schema` from the ODCS server block and the HTTP path only from `DATACONTRACT_DATABRICKS_HTTP_PATH`. `--logs` ensures the failure detail (field + rule) is in stdout. Non-zero exit means at least one rule failed. Capture per-contract result for the final report. **Publish the result to Entropy Data by default** (this skill already ships lineage there, and the test result belongs next to it on the data contract): add `--publish <API_HOST>/api/test-results` with `ENTROPY_DATA_API_KEY` set (not the deprecated `--publish-test-results`). Skip publishing only if the user asked not to, or if no API key is available — then say so in the report.
 
 ### Step 10 — Update the data product on Entropy Data
 
@@ -276,7 +276,7 @@ One `get` → edit → diff → `put`, preserving everything else:
      - `displayName` — set it if missing or empty (the contract's `name`, else `DATA_PRODUCT_NAME`); keep an existing value.
      - `status` = `active`.
    - **Only on success:** the top-level `customProperties` entry `aiExamples` — if it is missing, says the product is not implemented yet, or doesn't reference the real table, set it to one realistic question plus SQL against the fully qualified table, using only contract columns, in the existing style, e.g. `Q: Average score per federal state` + newline + `SELECT federal_state, sum(avg_score_value * persons) / sum(persons) AS avg_score FROM <CATALOG>.<SCHEMA>.<TABLE> GROUP BY federal_state`. If it already queries `<CATALOG>.<SCHEMA>.<TABLE>` with existing columns, keep it.
-3. `diff -u target/<DATA_PRODUCT_ID>.published.odps.yaml target/<DATA_PRODUCT_ID>.odps.yaml` and show it. If nothing changed, skip the put. If the diff touches anything beyond the keys above, stop and fix the edit.
+3. Compare **semantically**, not textually — `yq -i` re-indents lists and rewraps long strings, so a text diff touches almost every line: `diff -u <(yq -o json -P target/<DATA_PRODUCT_ID>.published.odps.yaml) <(yq -o json -P target/<DATA_PRODUCT_ID>.odps.yaml)` and show it. If nothing changed, skip the put. If this JSON diff touches anything beyond the keys above, stop and fix the edit.
 4. `entropy-data dataproducts put <DATA_PRODUCT_ID> --file target/<DATA_PRODUCT_ID>.odps.yaml`.
 5. Refresh the local file so CI publishes the same thing: `entropy-data dataproducts get <DATA_PRODUCT_ID> -o yaml > <DATA_PRODUCT_ID>.odps.yaml`. Delete the two `target/` files.
 
